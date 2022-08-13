@@ -6,7 +6,7 @@ I decided to measure the water use at home, and based my own implementation on t
 * https://www.mysensors.org/build/pulse_water
 * https://github.com/buldogwtf/watermeter_esp8236_TCRT5000_mqtt_node-red/blob/master/watermeter.ino
 
-I am using a NodeMCU ESP8266 board, and the sensor is connected to the 5V, GND, and D4 (GPIO2)
+I am using a NodeMCU ESP8266 board with an inductive proximity sensor, and the sensor is connected to the Vin, GND, and D4 (GPIO2). Note that there are different sizes and voltages and NPN/PNP proximity sensors, so make sure to buy the correct one (I use 5V NPN).
 
 I uploaded the Watermeter.ino file to the board; it does the following setup:
 * Open serial connection to write monitoring / debugging messages
