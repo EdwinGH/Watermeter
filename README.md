@@ -1,4 +1,4 @@
-# Watermeter
+# Measuring home water usage with sensor on watermeter
 
 I decided to measure the water use at home, and based my own implementation on the following sources:
 * https://www.huizebruin.nl/home-assistant/esphome/watermeter-uitlezen-in-home-assistant-met-esphome/?v=796834e7a283
