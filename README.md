@@ -20,4 +20,16 @@ In the loop it does the following:
 * * * Re-calculate the used water volume based on pulses
 * * * Upload the new pulse count, water volume and flow to the MySQL database
 
+The used MySQL table can be created with:
+```
+CREATE TABLE `water` (
+ `datetime` datetime NOT NULL,
+ `pulseCount` int NOT NULL,
+ `volume` decimal(10,3) NOT NULL,
+ `flow` decimal(4,1) NOT NULL,
+ PRIMARY KEY (`datetime`),
+ UNIQUE KEY `datetime` (`datetime`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COMMENT='Water meter readings'
+```
+
 The NodeMCU does not do to sleep (yet?), as pulses can come all the time. Maybe in a next release I can connect the sensor to the wake-up pin, but need to check later...
