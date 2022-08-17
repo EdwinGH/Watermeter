@@ -1,6 +1,8 @@
 // (c) Edwin Zuidema
-// Proximity detector to water flow
-// v1.0
+// Proximity detector to water flow and upload to MySQL database
+// v1.0 initial rekease
+// v1.1 Fixed when connection to MySQL DB fails (e.g. server restarting)
+//      Removed oldflow & oldvolume
 
 #include <ESP8266WiFi.h>
 #include <MySQL_Connection.h>
@@ -31,18 +33,16 @@ char query[128];
 WiFiClient client;
 MySQL_Connection conn((Client *)&client);
 
-double ppl = ((double)PULSE_FACTOR)/1000;        // Pulses per liter
+const double ppl = ((double)PULSE_FACTOR)/1000;        // Pulses per liter
 
+// volatile declarations for variables modified in the interrupt routine
 volatile uint32_t pulseCount = 0;
 volatile uint32_t lastBlink = 0;
-volatile double flow = 0;
-//bool pcReceived = false;
-uint32_t oldPulseCount = 0;
-double oldflow = 0;
-double oldvolume =0;
+volatile uint32_t lastPulse =0;
 uint32_t lastSend =0;
-uint32_t lastPulse =0;
-
+double volume = 0;
+volatile double flow = 0;
+uint32_t oldPulseCount = 0;
 
 void IRQ_HANDLER_ATTR onPulse()
 {
@@ -79,26 +79,24 @@ void setup() {
   Serial.println("Setup: Serial opened");
 
   // init the WiFi connection
-  Serial.print("INFO: Connecting to ");
+  Serial.print("INFO: Connecting to WiFi SSID ");
   Serial.println(WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);   
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-
   Serial.println("");
-  Serial.println("INFO: WiFi connected");
-  Serial.println("INFO: IP address: ");
+  Serial.println("WiFi connected");
+  Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  Serial.print("Connecting to MySQL...  ");
-  if (conn.connect(MYSQL_SERVER_IP, 3306, MYSQL_USER, MYSQL_PASSWORD)) {
-    Serial.println("OK.");
-    delay(1000);
-  } else {
-    Serial.println("FAILED.");
+  Serial.print("Connecting to MySQL ");
+  while (conn.connect(MYSQL_SERVER_IP, 3306, MYSQL_USER, MYSQL_PASSWORD) != true) {
+    delay(500);
+    Serial.print(".");
   }
+  Serial.println("INFO: MySQL connected");
   MySQL_Cursor *cur_mem = new MySQL_Cursor(&conn);
   row_values *row = NULL;
 
@@ -120,67 +118,78 @@ void setup() {
   } else {
     pulseCount = oldPulseCount = 0;  
   }
-  Serial.println("Done with MySQL.");
+  Serial.println("Done with MySQL. Attaching interrupt");
   
   lastSend = millis();
   attachInterrupt(digitalPinToInterrupt(PROX_PIN), onPulse, FALLING);
+  Serial.println("Setup: Done.");
 }
 
 void loop() {
-//  Serial.println("Loop...");
+  bool update = false;
   row_values *row = NULL;
+
   uint32_t currentTime = millis();
 
-  // Only update values at a maximum frequency
-  if (currentTime - lastSend > SEND_FREQUENCY) {
+  // Only update values at a certain frequency
+  if ( (currentTime - lastSend) > SEND_FREQUENCY) {
     lastSend=currentTime;
-    Serial.println("Updating:");
+    Serial.println("Loop:");
 
-    if (flow != oldflow) {
-      oldflow = flow;
-    }
-    // No Pulse count received in 2min then no flow
-    if(currentTime - lastPulse > 120000) {
+    // No Pulse count received in 4x SEND_FREQUENCY (2m) then no flow, and prepare to write DB values
+    if( (currentTime - lastPulse) > (4*SEND_FREQUENCY) ) {
       Serial.println("(no pulse received since last update)");
-      flow = 0;
+      if (flow > 0) {
+        Serial.println("(setting flow to 0 and prepare update)");
+        flow = 0;
+        update = true;
+      }
     }
     Serial.print("flow: ");
     Serial.print(flow);
     Serial.println(" l/min:");
 
-    // Pulse count has changed, update all data and insert into DB
+    // Pulse count has changed, update all data and prepare to write DB values
     if (pulseCount != oldPulseCount) {
-      oldPulseCount = pulseCount;
       Serial.print("pulsecount: ");
       Serial.print(pulseCount);
       Serial.print(" (oldPulsecount: ");
       Serial.print(oldPulseCount);
       Serial.println(")");
+      oldPulseCount = pulseCount;
+      update = true;
 
-      double volume = ((double)pulseCount/((double)PULSE_FACTOR));
-      if (volume != oldvolume) {
-        oldvolume = volume;
-        Serial.print("volume (pulsecount / factor): ");
-        Serial.print(volume, 3);
-        Serial.println(" m3");
-        //send(volumeMsg.set(volume, 3));               // Send volume value to gw
-        Serial.println("Check if MySQL is still connected");
-        if (conn.connected()) {
-          MySQL_Cursor *cur_mem = new MySQL_Cursor(&conn);
-          sprintf(query, MYSQL_INSERT_DATA, flow, pulseCount, volume);
-          Serial.print("MySQL query: ");
-          Serial.println(query);
-
-          // Execute the query
-          cur_mem->execute(query);
-          Serial.println("Done with MySQL.");
-
-          // Deleting the cursor also frees up memory used
-          delete cur_mem;
-        } else {
-          Serial.println("MySQL NOT connected (anymore)");
+      volume = ((double)pulseCount/((double)PULSE_FACTOR));
+      Serial.print("volume (pulsecount / factor): ");
+      Serial.print(volume, 3);
+      Serial.println(" m3");
+    }
+    
+    // Is there a DB update to be done?
+    if (update) {
+      Serial.println("Updating. Check if MySQL is still connected");
+      if (!conn.connected()) {
+        Serial.println("MySQL NOT connected (anymore)");
+        Serial.print("Re-connecting to MySQL ");
+        while (conn.connect(MYSQL_SERVER_IP, 3306, MYSQL_USER, MYSQL_PASSWORD) != true) {
+          delay(500);
+          Serial.print(".");
         }
+        Serial.println("");
+        Serial.println("INFO: MySQL (re)connected");
       }
+      MySQL_Cursor *cur_mem = new MySQL_Cursor(&conn);
+      sprintf(query, MYSQL_INSERT_DATA, flow, pulseCount, volume);
+      Serial.print("MySQL query: ");
+      Serial.println(query);
+
+      // Execute the query
+      cur_mem->execute(query);
+      Serial.println("Done with MySQL. Deleting cursor and ending Loop");
+
+      // Deleting the cursor also frees up memory used
+      delete cur_mem;
+      update = false;
     }
   }
 }
