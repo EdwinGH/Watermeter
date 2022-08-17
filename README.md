@@ -10,10 +10,11 @@ I am using a NodeMCU ESP8266 board with an inductive proximity sensor, and the s
 
 (picture missing)
 
-This is how the sensor is 'attached' to the watermeter (which is owned by the water utility company, so don't make any modifications to it!):
+This is how the sensor is 'attached' to the Elster / Honeywell V200 watermeter (which is owned by the water utility company, so don't make any modifications to it!):
 
 ![Setup](https://github.com/EdwinGH/Watermeter/blob/main/Watermeter%20setup.jpg)
 
+This watermeter has a rotating element with iron, which rotates once per liter. 
 Note that there are different sizes and voltages and NPN/PNP proximity sensors, so make sure to buy the correct one (I use 5V NPN).
 
 I uploaded the Watermeter.ino file to the board; it does the following setup:
